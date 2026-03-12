@@ -122,11 +122,12 @@ data "oci_core_images" "this" {
 
   compartment_id = oci_identity_compartment.this.id
 
-  operating_system = each.value.operating_system
-  shape            = each.value.shape
-  sort_by          = "DISPLAYNAME"
-  sort_order       = "DESC"
-  state            = "AVAILABLE"
+  operating_system         = each.value.operating_system
+  operating_system_version = each.value.os_version
+  shape                    = each.value.shape
+  sort_by                  = "DISPLAYNAME"
+  sort_order               = "DESC"
+  state                    = "AVAILABLE"
 }
 
 resource "oci_core_instance" "ubuntu" {
@@ -142,7 +143,7 @@ resource "oci_core_instance" "ubuntu" {
   compartment_id = oci_identity_compartment.this.id
   shape          = local.instance.ubuntu.shape
 
-  display_name         = "Ubuntu ${count.index + 1}"
+  display_name         = "Ubuntu Micro ${count.index + 1}"
   preserve_boot_volume = false
 
   metadata = {
@@ -157,8 +158,8 @@ resource "oci_core_instance" "ubuntu" {
   }
 
   create_vnic_details {
-    display_name   = "Ubuntu ${count.index + 1}"
-    hostname_label = "ubuntu-${count.index + 1}"
+    display_name   = "Ubuntu Micro ${count.index + 1}"
+    hostname_label = "ubuntu-micro-${count.index + 1}"
     nsg_ids        = [oci_core_network_security_group.this.id]
     subnet_id      = oci_core_subnet.this.id
   }
@@ -174,17 +175,17 @@ resource "oci_core_instance" "ubuntu" {
   }
 }
 
-resource "oci_core_instance" "oracle" {
+resource "oci_core_instance" "ubuntu_arm" {
   availability_domain = random_shuffle.this.result.0
   compartment_id      = oci_identity_compartment.this.id
-  shape               = local.instance.oracle.shape
+  shape               = local.instance.ubuntu_arm.shape
 
-  display_name         = "Oracle Linux"
+  display_name         = "Ubuntu ARM"
   preserve_boot_volume = false
 
   metadata = {
     ssh_authorized_keys = var.ssh_public_key
-    user_data           = data.cloudinit_config.this["oracle"].rendered
+    user_data           = data.cloudinit_config.this["ubuntu_arm"].rendered
   }
 
   agent_config {
@@ -195,8 +196,8 @@ resource "oci_core_instance" "oracle" {
 
   create_vnic_details {
     assign_public_ip = false
-    display_name     = "Oracle Linux"
-    hostname_label   = "oracle-linux"
+    display_name     = "Ubuntu ARM"
+    hostname_label   = "ubuntu-arm"
     nsg_ids          = [oci_core_network_security_group.this.id]
     subnet_id        = oci_core_subnet.this.id
   }
@@ -207,7 +208,7 @@ resource "oci_core_instance" "oracle" {
   }
 
   source_details {
-    source_id               = data.oci_core_images.this["oracle"].images.0.id
+    source_id               = data.oci_core_images.this["ubuntu_arm"].images.0.id
     source_type             = "image"
     boot_volume_size_in_gbs = 100
   }
@@ -218,7 +219,7 @@ resource "oci_core_instance" "oracle" {
 }
 
 data "oci_core_private_ips" "this" {
-  ip_address = oci_core_instance.oracle.private_ip
+  ip_address = oci_core_instance.ubuntu_arm.private_ip
   subnet_id  = oci_core_subnet.this.id
 }
 
@@ -226,7 +227,7 @@ resource "oci_core_public_ip" "this" {
   compartment_id = oci_identity_compartment.this.id
   lifetime       = "RESERVED"
 
-  display_name  = oci_core_instance.oracle.display_name
+  display_name  = oci_core_instance.ubuntu_arm.display_name
   private_ip_id = data.oci_core_private_ips.this.private_ips.0.id
 }
 
@@ -251,7 +252,30 @@ resource "oci_core_volume_backup_policy_assignment" "this" {
   asset_id = (
     count.index < 2 ?
     oci_core_instance.ubuntu[count.index].boot_volume_id :
-    oci_core_instance.oracle.boot_volume_id
+    oci_core_instance.ubuntu_arm.boot_volume_id
   )
   policy_id = oci_core_volume_backup_policy.this.id
+}
+
+# Automatically cleans up any lingering boot volume backups upon destruction
+# so the compartment can be deleted cleanly.
+resource "null_resource" "cleanup_untracked_backups" {
+  triggers = {
+    compartment_id = oci_identity_compartment.this.id
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<EOT
+      BACKUPS=$(oci bv boot-volume-backup list --compartment-id ${self.triggers.compartment_id} --all --query "join(' ', data[].id)" --raw-output)
+      for id in $BACKUPS; do
+        if [ -n "$id" ]; then
+          echo "Deleting boot volume backup: $id"
+          oci bv boot-volume-backup delete --boot-volume-backup-id $id --force --wait-for-state TERMINATED
+        fi
+      done
+    EOT
+    
+    on_failure = continue 
+  }
 }
