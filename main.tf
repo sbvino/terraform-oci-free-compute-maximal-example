@@ -43,7 +43,7 @@ resource "oci_core_default_security_list" "this" {
   manage_default_resource_id = oci_core_vcn.this.default_security_list_id
 
   dynamic "ingress_security_rules" {
-    for_each = [22, 80, 443]
+    for_each = [22, 80, 443, 8080]
     iterator = port
     content {
       protocol = local.protocol_number.tcp
@@ -63,6 +63,19 @@ resource "oci_core_default_security_list" "this" {
     protocol    = "all"
 
     description = "All traffic to any destination"
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "udp_range" {
+  network_security_group_id = oci_core_network_security_group.this.id
+  direction                 = "INGRESS"
+  protocol                  = "17" # UDP protocol number
+  source                    = "0.0.0.0/0"
+  description               = "Allow UDP range 56000-56100"
+
+  udp_options {
+    min = 56000
+    max = 56100
   }
 }
 
