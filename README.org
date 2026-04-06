@@ -14,7 +14,7 @@
         #+end_example
 ** Quick-Create Link
    1. Open the following link in your browser:
-      https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/RhubarbSin/terraform-oci-free-compute-maximal-example/archive/refs/tags/v0.2.0.zip
+      https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sbvino/terraform-oci-free-compute-maximal/archive/refs/tags/0.1.1.zip
    2. On the *Create stack* page, select the check box labeled "I have reviewed and accept the Oracle Terms of Use."
    3. Click on the *Next* button and provide an SSH public key.
    4. Click *Next* again.
